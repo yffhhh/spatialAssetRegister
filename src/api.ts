@@ -1,7 +1,7 @@
 import type { Asset, AssetFilters, QaIssue } from "./types";
 
 const API_BASE =
-  process.env.VITE_API_BASE?.trim() || "http://localhost:4000/api";
+  import.meta.env.VITE_API_BASE?.trim() || "http://localhost:4000/api";
 let authToken = "";
 
 export interface AuthSession {
