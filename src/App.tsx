@@ -1,5 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
+import {
+  Box,
+  Checkbox,
+  FormControl,
+  ListItemText,
+  MenuItem,
+  OutlinedInput,
+  Select,
+  TextField,
+} from "@mui/material";
+import FilterAltOffOutlinedIcon from "@mui/icons-material/FilterAltOffOutlined";
 import {
   createAsset,
   deleteAsset,
@@ -17,9 +28,9 @@ import type { Asset, AssetFilters, QaIssue } from "./types";
 
 const defaultFilters: AssetFilters = {
   search: "",
-  region: "",
-  type: "",
-  status: "",
+  region: [],
+  type: [],
+  status: [],
 };
 
 const emptyAsset: Omit<Asset, "id" | "createdAt" | "updatedAt"> = {
@@ -106,7 +117,35 @@ function qaClassName(code: QaIssue["code"]): string {
   return "qa-badge qa-missing-fields";
 }
 
+function StatusDot({
+  color,
+  strokeWidth = 2,
+}: {
+  color: string;
+  strokeWidth?: number;
+}) {
+  return (
+    <svg className="status-dot" viewBox="0 0 12 12" aria-hidden="true">
+      <circle
+        cx="6"
+        cy="6"
+        r="4.5"
+        fill="none"
+        stroke={color}
+        strokeWidth={strokeWidth}
+      />
+    </svg>
+  );
+}
+
+function statusColor(status: Asset["status"]): string {
+  if (status === "Active") return "#0a7";
+  if (status === "Planned") return "#f39c12";
+  return "#95a5a6";
+}
+
 export default function App() {
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loginUsername, setLoginUsername] = useState("admin");
@@ -114,6 +153,7 @@ export default function App() {
   const [authError, setAuthError] = useState("");
 
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [allAssets, setAllAssets] = useState<Asset[]>([]);
   const [filters, setFilters] = useState<AssetFilters>(defaultFilters);
   const [qaIssues, setQaIssues] = useState<QaIssue[]>([]);
   const [form, setForm] = useState(emptyAsset);
@@ -126,14 +166,17 @@ export default function App() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   const isAdmin = session?.role === "admin";
+  const roleDescription = isAdmin
+    ? "Manage, update, quality-check and export Crown land style spatial records."
+    : "View, search and export Crown land style spatial records (read-only access).";
 
   const regions = useMemo(
-    () => [...new Set(assets.map((a) => a.region))],
-    [assets],
+    () => [...new Set(allAssets.map((a) => a.region))],
+    [allAssets],
   );
   const types = useMemo(
-    () => [...new Set(assets.map((a) => a.type))],
-    [assets],
+    () => [...new Set(allAssets.map((a) => a.type))],
+    [allAssets],
   );
 
   const qaByAssetId = useMemo(() => {
@@ -186,12 +229,31 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    function handleOutsideClick(event: MouseEvent) {
+      const target = event.target as Node | null;
+      if (!accountMenuRef.current || !target) return;
+      if (!accountMenuRef.current.contains(target)) {
+        setAccountMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
+
   async function loadAssets() {
     setLoading(true);
     setError("");
     try {
-      const data = await getAssets(filters);
+      const [data, full] = await Promise.all([
+        getAssets(filters),
+        getAssets(defaultFilters),
+      ]);
       setAssets(data);
+      setAllAssets(full);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -289,6 +351,16 @@ export default function App() {
     if (sortKey !== key) return "";
     return sortDirection === "asc" ? " ↑" : " ↓";
   }
+
+  function renderMultiValue(values: string[], fallback: string): string {
+    return values.length > 0 ? values.join(", ") : fallback;
+  }
+
+  const hasActiveFilters =
+    filters.search.trim().length > 0 ||
+    filters.region.length > 0 ||
+    filters.type.length > 0 ||
+    filters.status.length > 0;
 
   async function submitForm(event: React.FormEvent) {
     event.preventDefault();
@@ -405,13 +477,10 @@ export default function App() {
         <div className="header-top">
           <div>
             <h1>Spatial Asset Register Lite</h1>
-            <p>
-              Map, edit, quality-check and export Crown land style spatial
-              records.
-            </p>
+            <p>{roleDescription}</p>
           </div>
           <div className="header-user">
-            <div className="account-menu">
+            <div className="account-menu" ref={accountMenuRef}>
               <button
                 type="button"
                 className="user-pill user-pill-btn"
@@ -456,44 +525,120 @@ export default function App() {
 
       <section className="panel">
         <h2>Search / Filter</h2>
-        <div className="grid">
-          <input
-            placeholder="Search by name"
+        <Box
+          className="grid"
+          sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff" } }}
+        >
+          <TextField
+            label="Search by name"
+            size="small"
             value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
           />
-          <select
-            value={filters.region}
-            onChange={(e) => setFilters({ ...filters, region: e.target.value })}
+          <FormControl size="small">
+            <Select
+              multiple
+              value={filters.region}
+              displayEmpty
+              input={<OutlinedInput />}
+              renderValue={(value) =>
+                renderMultiValue(value as string[], "All regions")
+              }
+              inputProps={{ "aria-label": "Region" }}
+              onChange={(e) => {
+                const value = e.target.value;
+                setFilters({
+                  ...filters,
+                  region: typeof value === "string" ? value.split(",") : value,
+                });
+              }}
+            >
+              {regions.map((region) => (
+                <MenuItem key={region} value={region}>
+                  <Checkbox checked={filters.region.includes(region)} />
+                  <ListItemText primary={region} />
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small">
+            <Select
+              multiple
+              value={filters.type}
+              displayEmpty
+              input={<OutlinedInput />}
+              renderValue={(value) =>
+                renderMultiValue(value as string[], "All types")
+              }
+              inputProps={{ "aria-label": "Type" }}
+              onChange={(e) => {
+                const value = e.target.value;
+                setFilters({
+                  ...filters,
+                  type: typeof value === "string" ? value.split(",") : value,
+                });
+              }}
+            >
+              {types.map((type) => (
+                <MenuItem key={type} value={type}>
+                  <Checkbox checked={filters.type.includes(type)} />
+                  <ListItemText primary={type} />
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small">
+            <Select
+              multiple
+              value={filters.status}
+              displayEmpty
+              input={<OutlinedInput />}
+              renderValue={(value) =>
+                renderMultiValue(value as string[], "All status")
+              }
+              inputProps={{ "aria-label": "Status" }}
+              onChange={(e) => {
+                const value = e.target.value;
+                setFilters({
+                  ...filters,
+                  status: typeof value === "string" ? value.split(",") : value,
+                });
+              }}
+            >
+              <MenuItem value="Active">
+                <Checkbox checked={filters.status.includes("Active")} />
+                <span className="status-filter-dot">
+                  <StatusDot color="#0a7" strokeWidth={2.8} />
+                </span>
+                Active
+              </MenuItem>
+              <MenuItem value="Inactive">
+                <Checkbox checked={filters.status.includes("Inactive")} />
+                <span className="status-filter-dot">
+                  <StatusDot color="#95a5a6" strokeWidth={2.8} />
+                </span>
+                Inactive
+              </MenuItem>
+              <MenuItem value="Planned">
+                <Checkbox checked={filters.status.includes("Planned")} />
+                <span className="status-filter-dot">
+                  <StatusDot color="#f39c12" strokeWidth={2.8} />
+                </span>
+                Planned
+              </MenuItem>
+            </Select>
+          </FormControl>
+          <button
+            type="button"
+            className="filter-clear-btn"
+            aria-label="Clear all filters"
+            title="Clear all filters"
+            onClick={() => setFilters({ ...defaultFilters })}
+            disabled={!hasActiveFilters}
           >
-            <option value="">All regions</option>
-            {regions.map((region) => (
-              <option key={region} value={region}>
-                {region}
-              </option>
-            ))}
-          </select>
-          <select
-            value={filters.type}
-            onChange={(e) => setFilters({ ...filters, type: e.target.value })}
-          >
-            <option value="">All asset types</option>
-            {types.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
-          <select
-            value={filters.status}
-            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-          >
-            <option value="">All status</option>
-            <option value="Active">Active</option>
-            <option value="Inactive">Inactive</option>
-            <option value="Planned">Planned</option>
-          </select>
-        </div>
+            <FilterAltOffOutlinedIcon fontSize="small" />
+          </button>
+        </Box>
       </section>
 
       <section className="map-panel">
@@ -621,6 +766,7 @@ export default function App() {
           <table>
             <thead>
               <tr>
+                <th>Asset ID</th>
                 <th
                   className="sortable-head"
                   onClick={() => toggleSort("name")}
@@ -676,10 +822,16 @@ export default function App() {
             <tbody>
               {visibleAssets.map((asset) => (
                 <tr key={asset.id}>
+                  <td>{asset.id}</td>
                   <td>{asset.name}</td>
                   <td>{asset.region}</td>
                   <td>{asset.type}</td>
-                  <td>{asset.status}</td>
+                  <td>
+                    <span className="status-cell">
+                      <StatusDot color={statusColor(asset.status)} />
+                      {asset.status}
+                    </span>
+                  </td>
                   <td>{asset.latitude ?? "N/A"}</td>
                   <td>{asset.longitude ?? "N/A"}</td>
                   <td>{new Date(asset.createdAt).toLocaleString()}</td>
@@ -743,9 +895,6 @@ export default function App() {
             <button onClick={() => exportCsv(filters)}>Export CSV</button>
             <button onClick={() => exportGeoJson(filters)}>
               Export GeoJSON
-            </button>
-            <button type="button" onClick={resetView}>
-              Reset
             </button>
             {isAdmin ? (
               <button type="button" onClick={resetDataToSeed}>

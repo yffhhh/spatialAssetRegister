@@ -14,9 +14,9 @@ export interface Asset {
 
 export interface AssetFilters {
   search: string;
-  region: string;
-  type: string;
-  status: string;
+  region: string[];
+  type: string[];
+  status: string[];
 }
 
 export interface QaIssue {

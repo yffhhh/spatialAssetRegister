@@ -18,11 +18,14 @@ function authHeaders(): HeadersInit {
   return authToken ? { Authorization: `Bearer ${authToken}` } : {};
 }
 
-export async function login(username: string, password: string): Promise<AuthSession> {
+export async function login(
+  username: string,
+  password: string,
+): Promise<AuthSession> {
   const response = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
+    body: JSON.stringify({ username, password }),
   });
   if (!response.ok) {
     throw new Error("Invalid username or password");
@@ -33,6 +36,10 @@ export async function login(username: string, password: string): Promise<AuthSes
 function toQuery(filters: AssetFilters): string {
   const query = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      if (value.length > 0) query.set(key, value.join(","));
+      return;
+    }
     if (value.trim()) {
       query.set(key, value.trim());
     }
@@ -49,11 +56,13 @@ export async function getAssets(filters: AssetFilters): Promise<Asset[]> {
   return response.json() as Promise<Asset[]>;
 }
 
-export async function createAsset(payload: Omit<Asset, "id" | "createdAt" | "updatedAt">): Promise<Asset> {
+export async function createAsset(
+  payload: Omit<Asset, "id" | "createdAt" | "updatedAt">,
+): Promise<Asset> {
   const response = await fetch(`${API_BASE}/assets`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     throw new Error("Failed to create asset");
@@ -61,11 +70,14 @@ export async function createAsset(payload: Omit<Asset, "id" | "createdAt" | "upd
   return response.json() as Promise<Asset>;
 }
 
-export async function updateAsset(id: string, payload: Partial<Asset>): Promise<Asset> {
+export async function updateAsset(
+  id: string,
+  payload: Partial<Asset>,
+): Promise<Asset> {
   const response = await fetch(`${API_BASE}/assets/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     throw new Error("Failed to update asset");
@@ -76,7 +88,7 @@ export async function updateAsset(id: string, payload: Partial<Asset>): Promise<
 export async function deleteAsset(id: string): Promise<void> {
   const response = await fetch(`${API_BASE}/assets/${id}`, {
     method: "DELETE",
-    headers: authHeaders()
+    headers: authHeaders(),
   });
   if (!response.ok) {
     throw new Error("Failed to delete asset");
@@ -86,7 +98,7 @@ export async function deleteAsset(id: string): Promise<void> {
 export async function resetAssetsData(): Promise<void> {
   const response = await fetch(`${API_BASE}/assets/reset`, {
     method: "POST",
-    headers: authHeaders()
+    headers: authHeaders(),
   });
   if (!response.ok) {
     throw new Error("Failed to reset asset data");
@@ -103,22 +115,37 @@ export async function getQaIssues(): Promise<QaIssue[]> {
 
 export async function exportCsv(filters: AssetFilters): Promise<void> {
   const query = toQuery(filters);
-  const response = await fetch(`${API_BASE}/assets/export/csv${query ? `?${query}` : ""}`);
+  const response = await fetch(
+    `${API_BASE}/assets/export/csv${query ? `?${query}` : ""}`,
+  );
   if (!response.ok) {
     throw new Error("Failed to export CSV");
   }
   const blob = await response.blob();
-  downloadBlob(blob, "assets.csv");
+  downloadBlob(blob, buildExportFilename("csv"));
 }
 
 export async function exportGeoJson(filters: AssetFilters): Promise<void> {
   const query = toQuery(filters);
-  const response = await fetch(`${API_BASE}/assets/export/geojson${query ? `?${query}` : ""}`);
+  const response = await fetch(
+    `${API_BASE}/assets/export/geojson${query ? `?${query}` : ""}`,
+  );
   if (!response.ok) {
     throw new Error("Failed to export GeoJSON");
   }
   const blob = await response.blob();
-  downloadBlob(blob, "assets.geojson");
+  downloadBlob(blob, buildExportFilename("geojson"));
+}
+
+function buildExportFilename(ext: "csv" | "geojson"): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mi = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `spatial-assets-${yyyy}-${mm}-${dd}_${hh}-${mi}-${ss}.${ext}`;
 }
 
 function downloadBlob(blob: Blob, filename: string): void {

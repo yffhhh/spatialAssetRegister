@@ -39,15 +39,15 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
 
 function filterAssets(query: Record<string, string | undefined>): Asset[] {
   const search = (query.search ?? "").toLowerCase();
-  const region = (query.region ?? "").toLowerCase();
-  const type = (query.type ?? "").toLowerCase();
-  const status = (query.status ?? "").toLowerCase();
+  const regions = (query.region ?? "").toLowerCase().split(",").filter(Boolean);
+  const types = (query.type ?? "").toLowerCase().split(",").filter(Boolean);
+  const statuses = (query.status ?? "").toLowerCase().split(",").filter(Boolean);
 
   return assets.filter((asset) => {
     const nameMatch = !search || asset.name.toLowerCase().includes(search);
-    const regionMatch = !region || asset.region.toLowerCase() === region;
-    const typeMatch = !type || asset.type.toLowerCase() === type;
-    const statusMatch = !status || asset.status.toLowerCase() === status;
+    const regionMatch = regions.length === 0 || regions.includes(asset.region.toLowerCase());
+    const typeMatch = types.length === 0 || types.includes(asset.type.toLowerCase());
+    const statusMatch = statuses.length === 0 || statuses.includes(asset.status.toLowerCase());
     return nameMatch && regionMatch && typeMatch && statusMatch;
   });
 }

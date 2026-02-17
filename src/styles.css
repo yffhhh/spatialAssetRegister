@@ -129,6 +129,10 @@ header {
 }
 
 .demo-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
   background: var(--bg-card);
   border: 1px solid var(--border);
   color: var(--text-main);
@@ -157,8 +161,9 @@ header {
 
 .demo-creds {
   display: block;
-  margin-top: 0.15rem;
+  margin-top: 0.05rem;
   font-size: 0.95rem;
+  letter-spacing: 0.01em;
 }
 
 .header-top {
@@ -250,9 +255,63 @@ header {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+.filter-clear-btn {
+  min-width: 42px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-soft);
+  color: var(--text-main);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: end;
+}
+
+.filter-clear-btn:hover:not(:disabled) {
+  background: var(--bg-soft-hover);
+}
+
+.filter-clear-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .actions {
   display: flex;
   gap: 0.5rem;
+}
+
+.status-legend {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.7rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.status-legend span,
+.status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.status-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.status-filter-dot {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 0.45rem;
+}
+
+.status-filter-dot .status-dot {
+  width: 0.85rem;
+  height: 0.85rem;
 }
 
 input,
@@ -281,13 +340,15 @@ button:hover {
 }
 
 table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
 }
 
 .table-scroll {
   max-height: 380px;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
 }
 
 th,
@@ -297,6 +358,7 @@ td {
   border-bottom: 1px solid var(--border);
   font-size: 0.9rem;
   line-height: 1.4;
+  white-space: nowrap;
 }
 
 thead th {
