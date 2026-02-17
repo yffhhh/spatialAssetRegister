@@ -5,7 +5,7 @@ import { seedAssets } from "./data";
 import type { Asset, QaIssue } from "./types";
 
 const app = express();
-const port = 4000;
+const port = Number(process.env.PORT) || 4000;
 
 app.use(cors());
 app.use(express.json());
