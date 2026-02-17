@@ -803,18 +803,6 @@ export default function App() {
                 >
                   Longitude{sortLabel("longitude")}
                 </th>
-                <th
-                  className="sortable-head"
-                  onClick={() => toggleSort("createdAt")}
-                >
-                  Created At{sortLabel("createdAt")}
-                </th>
-                <th
-                  className="sortable-head"
-                  onClick={() => toggleSort("updatedAt")}
-                >
-                  Updated At{sortLabel("updatedAt")}
-                </th>
                 {isAdmin ? <th>Action</th> : null}
                 {isAdmin && qaRan ? <th>QA Errors</th> : null}
               </tr>
@@ -834,8 +822,6 @@ export default function App() {
                   </td>
                   <td>{asset.latitude ?? "N/A"}</td>
                   <td>{asset.longitude ?? "N/A"}</td>
-                  <td>{new Date(asset.createdAt).toLocaleString()}</td>
-                  <td>{new Date(asset.updatedAt).toLocaleString()}</td>
                   {isAdmin ? (
                     <td>
                       <div className="icon-actions">

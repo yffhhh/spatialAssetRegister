@@ -114,6 +114,17 @@ function toCsv(records: Asset[]): string {
   return [headers.join(","), ...rows].join("\n");
 }
 
+function generateUniqueAssetId(records: Asset[]): string {
+  const existingIds = new Set(records.map((asset) => asset.id));
+  for (let attempts = 0; attempts < 10000; attempts += 1) {
+    const candidate = `A-${Math.floor(1000 + Math.random() * 9000)}`;
+    if (!existingIds.has(candidate)) {
+      return candidate;
+    }
+  }
+  throw new Error("Failed to generate unique asset ID");
+}
+
 app.get("/api/assets", (req, res) => {
   const records = filterAssets(req.query as Record<string, string>);
   res.json(records);
@@ -138,7 +149,7 @@ app.post("/api/auth/login", async (req, res) => {
 
 app.post("/api/assets", authenticate, requireAdmin, (req, res) => {
   const payload = req.body as Omit<Asset, "id" | "createdAt" | "updatedAt">;
-  const id = `A-${Math.floor(1000 + Math.random() * 8999)}`;
+  const id = generateUniqueAssetId(assets);
   const now = new Date().toISOString();
   const record: Asset = { ...payload, id, createdAt: now, updatedAt: now };
   assets.unshift(record);
