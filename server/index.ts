@@ -1,0 +1,180 @@
+import cors from "cors";
+import express from "express";
+import { seedAssets } from "./data";
+import type { Asset, QaIssue } from "./types";
+
+const app = express();
+const port = 4000;
+
+app.use(cors());
+app.use(express.json());
+
+let assets: Asset[] = seedAssets.map((asset) => ({ ...asset }));
+
+function filterAssets(query: Record<string, string | undefined>): Asset[] {
+  const search = (query.search ?? "").toLowerCase();
+  const region = (query.region ?? "").toLowerCase();
+  const type = (query.type ?? "").toLowerCase();
+  const status = (query.status ?? "").toLowerCase();
+
+  return assets.filter((asset) => {
+    const nameMatch = !search || asset.name.toLowerCase().includes(search);
+    const regionMatch = !region || asset.region.toLowerCase() === region;
+    const typeMatch = !type || asset.type.toLowerCase() === type;
+    const statusMatch = !status || asset.status.toLowerCase() === status;
+    return nameMatch && regionMatch && typeMatch && statusMatch;
+  });
+}
+
+function runQaChecks(records: Asset[]): QaIssue[] {
+  const issues: QaIssue[] = [];
+  const pointBuckets = new Map<string, string[]>();
+
+  records.forEach((asset) => {
+    if (asset.latitude === null || asset.longitude === null) {
+      issues.push({
+        code: "MISSING_COORDINATES",
+        assetId: asset.id,
+        message: "Latitude/Longitude is missing."
+      });
+    } else {
+      const key = `${asset.latitude},${asset.longitude}`;
+      const list = pointBuckets.get(key) ?? [];
+      list.push(asset.id);
+      pointBuckets.set(key, list);
+    }
+
+    if (!asset.name || !asset.region || !asset.type || !asset.status) {
+      issues.push({
+        code: "MISSING_FIELDS",
+        assetId: asset.id,
+        message: "One or more required fields are empty."
+      });
+    }
+  });
+
+  pointBuckets.forEach((ids) => {
+    if (ids.length > 1) {
+      ids.forEach((id) => {
+        issues.push({
+          code: "DUPLICATE_POINT",
+          assetId: id,
+          message: `Shares coordinates with assets: ${ids.filter((x) => x !== id).join(", ")}.`
+        });
+      });
+    }
+  });
+
+  return issues;
+}
+
+function toCsv(records: Asset[]): string {
+  const headers = ["id", "name", "region", "type", "status", "latitude", "longitude", "createdAt", "updatedAt"];
+  const rows = records.map((asset) =>
+    [
+      asset.id,
+      asset.name,
+      asset.region,
+      asset.type,
+      asset.status,
+      asset.latitude ?? "",
+      asset.longitude ?? "",
+      asset.createdAt,
+      asset.updatedAt
+    ]
+      .map((field) => `"${String(field).replaceAll("\"", "\"\"")}"`)
+      .join(",")
+  );
+  return [headers.join(","), ...rows].join("\n");
+}
+
+app.get("/api/assets", (req, res) => {
+  const records = filterAssets(req.query as Record<string, string>);
+  res.json(records);
+});
+
+app.post("/api/assets", (req, res) => {
+  const payload = req.body as Omit<Asset, "id" | "createdAt" | "updatedAt">;
+  const id = `A-${Math.floor(1000 + Math.random() * 8999)}`;
+  const now = new Date().toISOString();
+  const record: Asset = { ...payload, id, createdAt: now, updatedAt: now };
+  assets.unshift(record);
+  res.status(201).json(record);
+});
+
+app.put("/api/assets/:id", (req, res) => {
+  const { id } = req.params;
+  const index = assets.findIndex((asset) => asset.id === id);
+  if (index === -1) {
+    res.status(404).json({ message: "Asset not found" });
+    return;
+  }
+  assets[index] = {
+    ...assets[index],
+    ...req.body,
+    id: assets[index].id,
+    createdAt: assets[index].createdAt,
+    updatedAt: new Date().toISOString()
+  };
+  res.json(assets[index]);
+});
+
+app.delete("/api/assets/:id", (req, res) => {
+  const { id } = req.params;
+  const index = assets.findIndex((asset) => asset.id === id);
+  if (index === -1) {
+    res.status(404).json({ message: "Asset not found" });
+    return;
+  }
+  assets.splice(index, 1);
+  res.status(204).send();
+});
+
+app.post("/api/assets/reset", (_, res) => {
+  assets = seedAssets.map((asset) => ({ ...asset }));
+  res.status(200).json({ message: "Working asset dataset reset to seed copy." });
+});
+
+app.get("/api/assets/qa", (_, res) => {
+  res.json(runQaChecks(assets));
+});
+
+app.get("/api/assets/export/csv", (req, res) => {
+  const csv = toCsv(filterAssets(req.query as Record<string, string>));
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=assets.csv");
+  res.send(csv);
+});
+
+app.get("/api/assets/export/geojson", (req, res) => {
+  const records = filterAssets(req.query as Record<string, string>);
+  const geojson = {
+    type: "FeatureCollection",
+    features: records
+      .filter((asset) => asset.latitude !== null && asset.longitude !== null)
+      .map((asset) => ({
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [asset.longitude, asset.latitude]
+        },
+        properties: {
+          id: asset.id,
+          name: asset.name,
+          region: asset.region,
+          type: asset.type,
+          status: asset.status,
+          createdAt: asset.createdAt,
+          updatedAt: asset.updatedAt
+        }
+      }))
+  };
+  res.setHeader("Content-Type", "application/geo+json");
+  res.setHeader("Content-Disposition", "attachment; filename=assets.geojson");
+  res.send(JSON.stringify(geojson, null, 2));
+});
+
+app.listen(port, () => {
+  // eslint-disable-next-line no-console
+  console.log(`Spatial Asset Register API running at http://localhost:${port}`);
+});
