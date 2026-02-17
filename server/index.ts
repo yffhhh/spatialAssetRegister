@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import { issueToken, validateCredentials, verifyToken } from "./auth";
 import { seedAssets } from "./data";
 import type { Asset, QaIssue } from "./types";
 
@@ -10,6 +11,31 @@ app.use(cors());
 app.use(express.json());
 
 let assets: Asset[] = seedAssets.map((asset) => ({ ...asset }));
+
+function authenticate(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!token) {
+    res.status(401).json({ message: "Missing token" });
+    return;
+  }
+  const payload = verifyToken(token);
+  if (!payload) {
+    res.status(401).json({ message: "Invalid token" });
+    return;
+  }
+  (req as express.Request & { user?: { username: string; role: "admin" | "user" } }).user = payload;
+  next();
+}
+
+function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  const role = (req as express.Request & { user?: { role: "admin" | "user" } }).user?.role;
+  if (role !== "admin") {
+    res.status(403).json({ message: "Admin role required" });
+    return;
+  }
+  next();
+}
 
 function filterAssets(query: Record<string, string | undefined>): Asset[] {
   const search = (query.search ?? "").toLowerCase();
@@ -93,7 +119,24 @@ app.get("/api/assets", (req, res) => {
   res.json(records);
 });
 
-app.post("/api/assets", (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
+  const { username, password } = req.body as { username?: string; password?: string };
+  if (!username || !password) {
+    res.status(400).json({ message: "username and password are required" });
+    return;
+  }
+
+  const account = await validateCredentials(username, password);
+  if (!account) {
+    res.status(401).json({ message: "Invalid credentials" });
+    return;
+  }
+
+  const token = issueToken(account.username, account.role);
+  res.json({ token, username: account.username, displayName: account.displayName, role: account.role });
+});
+
+app.post("/api/assets", authenticate, requireAdmin, (req, res) => {
   const payload = req.body as Omit<Asset, "id" | "createdAt" | "updatedAt">;
   const id = `A-${Math.floor(1000 + Math.random() * 8999)}`;
   const now = new Date().toISOString();
@@ -102,7 +145,7 @@ app.post("/api/assets", (req, res) => {
   res.status(201).json(record);
 });
 
-app.put("/api/assets/:id", (req, res) => {
+app.put("/api/assets/:id", authenticate, requireAdmin, (req, res) => {
   const { id } = req.params;
   const index = assets.findIndex((asset) => asset.id === id);
   if (index === -1) {
@@ -119,7 +162,7 @@ app.put("/api/assets/:id", (req, res) => {
   res.json(assets[index]);
 });
 
-app.delete("/api/assets/:id", (req, res) => {
+app.delete("/api/assets/:id", authenticate, requireAdmin, (req, res) => {
   const { id } = req.params;
   const index = assets.findIndex((asset) => asset.id === id);
   if (index === -1) {
@@ -130,7 +173,7 @@ app.delete("/api/assets/:id", (req, res) => {
   res.status(204).send();
 });
 
-app.post("/api/assets/reset", (_, res) => {
+app.post("/api/assets/reset", authenticate, requireAdmin, (_, res) => {
   assets = seedAssets.map((asset) => ({ ...asset }));
   res.status(200).json({ message: "Working asset dataset reset to seed copy." });
 });

@@ -1,7 +1,18 @@
 :root {
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  color: #1f2937;
-  background: #f4f7fb;
+  --bg-page: #f4f7fb;
+  --bg-card: #ffffff;
+  --bg-soft: #f8fafc;
+  --bg-soft-hover: #edf5f7;
+  --text-main: #1f2937;
+  --text-muted: #475569;
+  --border: #d1d9e2;
+  --border-strong: #a8bac7;
+  --brand: #0f766e;
+  --brand-hover: #0d625c;
+  --danger: #c0392b;
+  --danger-hover: #a93226;
+  --shadow: rgba(15, 23, 42, 0.14);
 }
 
 * {
@@ -9,14 +20,12 @@
   font-family: inherit;
 }
 
-body {
-  margin: 0;
-}
-
 html,
 body,
 #root {
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  color: var(--text-main);
+  background: var(--bg-page);
 }
 
 .layout {
@@ -28,11 +37,211 @@ body,
 .panel,
 .map-panel,
 header {
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 12px;
   padding: 1rem;
   margin-bottom: 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
+}
+
+.login-layout {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-shell {
+  width: min(980px, 100%);
+  display: grid;
+  grid-template-columns: 1fr 1.1fr;
+  gap: 1rem;
+}
+
+.login-brand {
+  background: linear-gradient(160deg, var(--brand) 0%, #155e75 100%);
+  color: #fff;
+  border-radius: 14px;
+  padding: 1.4rem;
+}
+
+.eyebrow {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
+.login-brand h2 {
+  margin: 0.35rem 0 0.6rem;
+  font-size: 2rem;
+}
+
+.login-brand p,
+.login-brand li {
+  line-height: 1.45;
+}
+
+.login-brand ul {
+  margin: 1rem 0 0;
+  padding-left: 1rem;
+}
+
+.login-panel {
+  width: 100%;
+}
+
+.login-subtitle {
+  margin-top: -0.3rem;
+  color: var(--text-muted);
+}
+
+.login-form {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 0.5rem;
+}
+
+.login-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.92rem;
+  color: var(--text-muted);
+}
+
+.login-help {
+  margin-top: 0.8rem;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+}
+
+.primary-btn {
+  min-width: 120px;
+}
+
+.demo-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.demo-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  text-align: left;
+  padding: 0.65rem;
+}
+
+.demo-card span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+
+.demo-card small {
+  color: var(--text-muted);
+}
+
+.demo-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 1.05rem;
+}
+
+.demo-creds {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.95rem;
+}
+
+.header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.header-user {
+  display: flex;
+  align-items: center;
+}
+
+.account-menu {
+  position: relative;
+}
+
+.account-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 180px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px var(--shadow);
+  padding: 0.35rem;
+  z-index: 20;
+}
+
+.account-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--text-main);
+  border: none;
+  border-radius: 9px;
+  padding: 0.52rem 0.62rem;
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  font-size: 0.9rem;
+}
+
+.account-item:hover {
+  background: var(--bg-soft-hover);
+}
+
+.user-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.user-pill-btn {
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.user-pill-btn:hover {
+  background: var(--bg-soft-hover);
+  border-color: var(--border-strong);
+}
+
+.user-icon,
+.account-item-icon {
+  display: inline-flex;
+  width: 1rem;
+  height: 1rem;
+}
+
+.icon-svg {
+  width: 1em;
+  height: 1em;
+  display: inline-block;
 }
 
 .grid {
@@ -51,18 +260,18 @@ select,
 button {
   padding: 0.55rem 0.7rem;
   border-radius: 8px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border);
 }
 
 button {
-  background: #0f766e;
+  background: var(--brand);
   color: #fff;
   border: none;
   cursor: pointer;
 }
 
 button:hover {
-  background: #0e5f58;
+  background: var(--brand-hover);
 }
 
 .map {
@@ -85,7 +294,7 @@ th,
 td {
   text-align: left;
   padding: 0.55rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border);
   font-size: 0.9rem;
   line-height: 1.4;
 }
@@ -94,7 +303,7 @@ thead th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #fff;
+  background: var(--bg-card);
 }
 
 .sortable-head {
@@ -103,12 +312,12 @@ thead th {
 }
 
 .error {
-  color: #b91c1c;
+  color: var(--danger);
 }
 
 .footer {
   text-align: center;
-  color: #475569;
+  color: var(--text-muted);
   font-size: 0.9rem;
   padding: 0.5rem 0 1rem;
 }
@@ -125,36 +334,29 @@ thead th {
 }
 
 .qa-missing-coordinates {
-  background: #fee2e2;
-  color: #991b1b;
+  background: #fde8e8;
+  color: #a03131;
 }
 
 .qa-duplicate-point {
-  background: #fef3c7;
-  color: #92400e;
+  background: #fff2d8;
+  color: #975f11;
 }
 
 .qa-missing-fields {
-  background: #e0e7ff;
-  color: #3730a3;
+  background: #e5ecff;
+  color: #2f3f96;
 }
 
 .qa-none {
-  background: #e2e8f0;
-  color: #334155;
+  background: var(--bg-soft);
+  color: var(--text-muted);
 }
 
 .qa-list {
   max-height: 180px;
   overflow-y: auto;
   padding-right: 0.4rem;
-}
-
-.qa-filter-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-top: 0.7rem;
 }
 
 .icon-actions {
@@ -172,15 +374,15 @@ thead th {
   justify-content: center;
   font-size: 1rem;
   border-radius: 8px;
-  background: #0f766e;
+  background: var(--brand);
 }
 
 .icon-btn-delete {
-  background: #b91c1c;
+  background: var(--danger);
 }
 
 .icon-btn-delete:hover {
-  background: #991b1b;
+  background: var(--danger-hover);
 }
 
 .icon-btn::after {
@@ -205,7 +407,16 @@ thead th {
 }
 
 @media (max-width: 980px) {
-  .asset-form-row {
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  .login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .demo-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .header-top {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

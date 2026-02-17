@@ -7,9 +7,12 @@ import {
   exportGeoJson,
   getAssets,
   getQaIssues,
+  login,
   resetAssetsData,
+  setAuthToken,
   updateAsset,
 } from "./api";
+import type { AuthSession } from "./api";
 import type { Asset, AssetFilters, QaIssue } from "./types";
 
 const defaultFilters: AssetFilters = {
@@ -28,27 +31,101 @@ const emptyAsset: Omit<Asset, "id" | "createdAt" | "updatedAt"> = {
   longitude: 151.7817,
 };
 
+type SortKey =
+  | "name"
+  | "region"
+  | "type"
+  | "status"
+  | "latitude"
+  | "longitude"
+  | "createdAt"
+  | "updatedAt";
+type QaFilter =
+  | "ALL"
+  | "MISSING_COORDINATES"
+  | "DUPLICATE_POINT"
+  | "MISSING_FIELDS"
+  | "NO_ERRORS";
+
+function UserIcon() {
+  return (
+    <svg className="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="8" r="4" fill="currentColor" />
+      <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" fill="currentColor" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg className="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M4 17.25V20h2.75L17.8 8.95l-2.75-2.75L4 17.25z"
+        fill="currentColor"
+      />
+      <path
+        d="M19.71 7.04a1 1 0 0 0 0-1.41L18.37 4.3a1 1 0 0 0-1.41 0l-1.13 1.13 2.75 2.75 1.13-1.14z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function DeleteIcon() {
+  return (
+    <svg className="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 7h12l-1 13H7L6 7zm3-3h6l1 2H8l1-2z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function BadgeIcon() {
+  return (
+    <svg className="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="4" y="3" width="16" height="18" rx="2" fill="currentColor" />
+      <rect x="7" y="7" width="10" height="2" fill="#fff" />
+      <rect x="7" y="11" width="6" height="2" fill="#fff" />
+    </svg>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg className="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M10 4H5v16h5v-2H7V6h3V4zm4 4l-1.41 1.41L14.17 11H9v2h5.17l-1.58 1.59L14 16l4-4-4-4z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 function qaClassName(code: QaIssue["code"]): string {
   if (code === "MISSING_COORDINATES") return "qa-badge qa-missing-coordinates";
   if (code === "DUPLICATE_POINT") return "qa-badge qa-duplicate-point";
   return "qa-badge qa-missing-fields";
 }
 
-type SortKey = "name" | "region" | "type" | "status" | "latitude" | "longitude" | "createdAt" | "updatedAt";
-type QaFilter = "ALL" | "MISSING_COORDINATES" | "DUPLICATE_POINT" | "MISSING_FIELDS" | "NO_ERRORS";
-
 export default function App() {
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [loginUsername, setLoginUsername] = useState("admin");
+  const [loginPassword, setLoginPassword] = useState("adminPassword");
+  const [authError, setAuthError] = useState("");
+
   const [assets, setAssets] = useState<Asset[]>([]);
   const [filters, setFilters] = useState<AssetFilters>(defaultFilters);
   const [qaIssues, setQaIssues] = useState<QaIssue[]>([]);
   const [form, setForm] = useState(emptyAsset);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState("");
   const [qaRan, setQaRan] = useState(false);
   const [qaFilter, setQaFilter] = useState<QaFilter>("ALL");
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  const isAdmin = session?.role === "admin";
 
   const regions = useMemo(
     () => [...new Set(assets.map((a) => a.region))],
@@ -58,6 +135,7 @@ export default function App() {
     () => [...new Set(assets.map((a) => a.type))],
     [assets],
   );
+
   const qaByAssetId = useMemo(() => {
     const grouped = new Map<string, string[]>();
     qaIssues.forEach((issue) => {
@@ -67,18 +145,17 @@ export default function App() {
     });
     return grouped;
   }, [qaIssues]);
+
   const sortedAssets = useMemo(() => {
     const list = [...assets];
     list.sort((a, b) => {
       const aValue = a[sortKey];
       const bValue = b[sortKey];
-
       if (typeof aValue === "number" || aValue === null) {
         const left = aValue ?? Number.NEGATIVE_INFINITY;
         const right = (bValue as number | null) ?? Number.NEGATIVE_INFINITY;
         return sortDirection === "asc" ? left - right : right - left;
       }
-
       const left = String(aValue).toLowerCase();
       const right = String(bValue).toLowerCase();
       if (left < right) return sortDirection === "asc" ? -1 : 1;
@@ -87,33 +164,27 @@ export default function App() {
     });
     return list;
   }, [assets, sortDirection, sortKey]);
-  const visibleAssets = useMemo(() => {
-    if (!qaRan || qaFilter === "ALL") {
-      return sortedAssets;
-    }
 
+  const visibleAssets = useMemo(() => {
+    if (!qaRan || qaFilter === "ALL") return sortedAssets;
     return sortedAssets.filter((asset) => {
       const codes = qaByAssetId.get(asset.id) ?? [];
-      if (qaFilter === "NO_ERRORS") {
-        return codes.length === 0;
-      }
+      if (qaFilter === "NO_ERRORS") return codes.length === 0;
       return codes.includes(qaFilter);
     });
   }, [qaByAssetId, qaFilter, qaRan, sortedAssets]);
 
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-      return;
+  useEffect(() => {
+    const raw = localStorage.getItem("spatial-auth");
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw) as AuthSession;
+      setSession(saved);
+      setAuthToken(saved.token);
+    } catch {
+      localStorage.removeItem("spatial-auth");
     }
-    setSortKey(key);
-    setSortDirection("asc");
-  }
-
-  function sortLabel(key: SortKey): string {
-    if (sortKey !== key) return "";
-    return sortDirection === "asc" ? " ↑" : " ↓";
-  }
+  }, []);
 
   async function loadAssets() {
     setLoading(true);
@@ -129,8 +200,33 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!session) return;
     loadAssets();
-  }, [filters.search, filters.region, filters.type, filters.status]);
+  }, [filters.search, filters.region, filters.type, filters.status, session]);
+
+  async function handleLogin(event: React.FormEvent) {
+    event.preventDefault();
+    setAuthError("");
+    try {
+      const nextSession = await login(loginUsername, loginPassword);
+      setAuthToken(nextSession.token);
+      setSession(nextSession);
+      setAccountMenuOpen(false);
+      localStorage.setItem("spatial-auth", JSON.stringify(nextSession));
+    } catch (e) {
+      setAuthError((e as Error).message);
+    }
+  }
+
+  function handleLogout() {
+    setSession(null);
+    setAccountMenuOpen(false);
+    setAuthToken("");
+    localStorage.removeItem("spatial-auth");
+    setAssets([]);
+    setQaIssues([]);
+    setQaRan(false);
+  }
 
   async function runQa() {
     const issues = await getQaIssues();
@@ -152,7 +248,10 @@ export default function App() {
   }
 
   async function resetDataToSeed() {
-    const confirmed = window.confirm("Reset all working data to the original seed copy?");
+    if (!isAdmin) return;
+    const confirmed = window.confirm(
+      "Reset all working data to the original seed copy?",
+    );
     if (!confirmed) return;
     await resetAssetsData();
     clearForm();
@@ -177,8 +276,23 @@ export default function App() {
     setForm(emptyAsset);
   }
 
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDirection("asc");
+  }
+
+  function sortLabel(key: SortKey): string {
+    if (sortKey !== key) return "";
+    return sortDirection === "asc" ? " ↑" : " ↓";
+  }
+
   async function submitForm(event: React.FormEvent) {
     event.preventDefault();
+    if (!isAdmin) return;
     const isCreate = editingId === null;
     if (editingId) {
       await updateAsset(editingId, form);
@@ -187,33 +301,157 @@ export default function App() {
     }
     clearForm();
     await loadAssets();
-    if (isCreate && qaRan) {
-      await runQa();
-    }
+    if (isCreate && qaRan) await runQa();
   }
 
   async function removeAsset(asset: Asset) {
+    if (!isAdmin) return;
     const confirmed = window.confirm(
       `Delete asset ${asset.id} (${asset.name || "Unnamed"})?`,
     );
     if (!confirmed) return;
     await deleteAsset(asset.id);
-    if (editingId === asset.id) {
-      clearForm();
-    }
+    if (editingId === asset.id) clearForm();
     await loadAssets();
-    if (qaRan) {
-      await runQa();
-    }
+    if (qaRan) await runQa();
+  }
+
+  if (!session) {
+    return (
+      <div className="layout login-layout">
+        <section className="login-shell">
+          <aside className="login-brand">
+            <p className="eyebrow">Spatial Asset Register</p>
+            <h2>Secure Access Portal</h2>
+            <p>
+              Sign in to view map data and asset records. Permissions are based
+              on your assigned role.
+            </p>
+            <ul>
+              <li>Admin: full edit access</li>
+              <li>User: read-only access</li>
+            </ul>
+          </aside>
+          <section className="panel login-panel">
+            <h2>Sign In</h2>
+            <p className="login-subtitle">Enter credentials to continue.</p>
+            <form className="login-form" onSubmit={handleLogin}>
+              <label>
+                Username
+                <input
+                  value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  placeholder="Enter username"
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="Enter password"
+                />
+              </label>
+              <div className="actions">
+                <button type="submit" className="primary-btn">
+                  Sign In
+                </button>
+              </div>
+            </form>
+            {authError ? <p className="error">{authError}</p> : null}
+            <div className="login-help">
+              <p>
+                <strong>Demo accounts</strong>
+              </p>
+              <div className="demo-grid">
+                <button
+                  type="button"
+                  className="demo-card"
+                  onClick={() => {
+                    setLoginUsername("admin");
+                    setLoginPassword("adminPassword");
+                  }}
+                >
+                  <span className="demo-role">
+                    <BadgeIcon /> Admin
+                  </span>
+                  <small className="demo-creds">admin / adminPassword</small>
+                </button>
+                <button
+                  type="button"
+                  className="demo-card"
+                  onClick={() => {
+                    setLoginUsername("user");
+                    setLoginPassword("userPassword");
+                  }}
+                >
+                  <span className="demo-role">
+                    <UserIcon /> User
+                  </span>
+                  <small className="demo-creds">user / userPassword</small>
+                </button>
+              </div>
+            </div>
+          </section>
+        </section>
+      </div>
+    );
   }
 
   return (
     <div className="layout">
       <header>
-        <h1>Spatial Asset Register Lite</h1>
-        <p>
-          Map, edit, quality-check and export Crown land style spatial records.
-        </p>
+        <div className="header-top">
+          <div>
+            <h1>Spatial Asset Register Lite</h1>
+            <p>
+              Map, edit, quality-check and export Crown land style spatial
+              records.
+            </p>
+          </div>
+          <div className="header-user">
+            <div className="account-menu">
+              <button
+                type="button"
+                className="user-pill user-pill-btn"
+                onClick={() => setAccountMenuOpen((v) => !v)}
+                aria-expanded={accountMenuOpen}
+                aria-haspopup="menu"
+              >
+                <span className="user-icon" aria-hidden="true">
+                  <UserIcon />
+                </span>
+                {session.displayName} ({session.role})
+              </button>
+              {accountMenuOpen ? (
+                <div className="account-dropdown" role="menu">
+                  {/* <button
+                    type="button"
+                    className="account-item"
+                    role="menuitem"
+                  >
+                    <span className="account-item-icon" aria-hidden="true">
+                      <BadgeIcon />
+                    </span>
+                    View account
+                  </button> */}
+                  <button
+                    type="button"
+                    className="account-item"
+                    role="menuitem"
+                    onClick={handleLogout}
+                  >
+                    <span className="account-item-icon" aria-hidden="true">
+                      <LogoutIcon />
+                    </span>
+                    Logout
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
       </header>
 
       <section className="panel">
@@ -294,116 +532,7 @@ export default function App() {
                   <br />
                   Status: {asset.status}
                   <br />
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    data-label="Edit"
-                    aria-label={`Edit ${asset.id}`}
-                    onClick={() => startEdit(asset)}
-                  >
-                    ✎
-                  </button>
-                </Popup>
-              </CircleMarker>
-            ))}
-        </MapContainer>
-      </section>
-
-      <section className="panel">
-        <h2>{editingId ? "Update Asset" : "Add Asset"}</h2>
-        <form className="grid" onSubmit={submitForm}>
-          <input
-            required
-            value={form.name}
-            placeholder="Asset name"
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-          />
-          <input
-            required
-            value={form.region}
-            placeholder="Region"
-            onChange={(e) => setForm({ ...form, region: e.target.value })}
-          />
-          <input
-            required
-            value={form.type}
-            placeholder="Type"
-            onChange={(e) => setForm({ ...form, type: e.target.value })}
-          />
-          <select
-            value={form.status}
-            onChange={(e) =>
-              setForm({ ...form, status: e.target.value as Asset["status"] })
-            }
-          >
-            <option value="Active">Active</option>
-            <option value="Inactive">Inactive</option>
-            <option value="Planned">Planned</option>
-          </select>
-          <input
-            type="number"
-            placeholder="Latitude"
-            value={form.latitude ?? ""}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                latitude: e.target.value ? Number(e.target.value) : null,
-              })
-            }
-          />
-          <input
-            type="number"
-            placeholder="Longitude"
-            value={form.longitude ?? ""}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                longitude: e.target.value ? Number(e.target.value) : null,
-              })
-            }
-          />
-          <div className="actions">
-            <button type="submit">{editingId ? "Update" : "Create"}</button>
-            <button type="button" onClick={clearForm}>
-              Clear
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <section className="panel">
-        <h2>Data Table</h2>
-        {loading ? <p>Loading...</p> : null}
-        {error ? <p className="error">{error}</p> : null}
-        <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th className="sortable-head" onClick={() => toggleSort("name")}>Name{sortLabel("name")}</th>
-              <th className="sortable-head" onClick={() => toggleSort("region")}>Region{sortLabel("region")}</th>
-              <th className="sortable-head" onClick={() => toggleSort("type")}>Type{sortLabel("type")}</th>
-              <th className="sortable-head" onClick={() => toggleSort("status")}>Status{sortLabel("status")}</th>
-              <th className="sortable-head" onClick={() => toggleSort("latitude")}>Latitude{sortLabel("latitude")}</th>
-              <th className="sortable-head" onClick={() => toggleSort("longitude")}>Longitude{sortLabel("longitude")}</th>
-              <th className="sortable-head" onClick={() => toggleSort("createdAt")}>Created At{sortLabel("createdAt")}</th>
-              <th className="sortable-head" onClick={() => toggleSort("updatedAt")}>Updated At{sortLabel("updatedAt")}</th>
-              <th>Action</th>
-              {qaRan ? <th>QA Errors</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {visibleAssets.map((asset) => (
-              <tr key={asset.id}>
-                <td>{asset.name}</td>
-                <td>{asset.region}</td>
-                <td>{asset.type}</td>
-                <td>{asset.status}</td>
-                <td>{asset.latitude ?? "N/A"}</td>
-                <td>{asset.longitude ?? "N/A"}</td>
-                <td>{new Date(asset.createdAt).toLocaleString()}</td>
-                <td>{new Date(asset.updatedAt).toLocaleString()}</td>
-                <td>
-                  <div className="icon-actions">
+                  {isAdmin ? (
                     <button
                       type="button"
                       className="icon-btn"
@@ -411,85 +540,230 @@ export default function App() {
                       aria-label={`Edit ${asset.id}`}
                       onClick={() => startEdit(asset)}
                     >
-                      ✎
+                      <EditIcon />
                     </button>
-                    <button
-                      type="button"
-                      className="icon-btn icon-btn-delete"
-                      data-label="Delete"
-                      aria-label={`Delete ${asset.id}`}
-                      onClick={() => removeAsset(asset)}
-                    >
-                      🗑
-                    </button>
-                  </div>
-                </td>
-                {qaRan ? (
-                  <td>
-                    {(qaByAssetId.get(asset.id) ?? []).length === 0 ? (
-                      <span className="qa-badge qa-none">None</span>
-                    ) : (
-                      (qaByAssetId.get(asset.id) ?? []).map((code) => (
-                        <span
-                          key={`${asset.id}-${code}`}
-                          className={qaClassName(code as QaIssue["code"])}
-                        >
-                          {code}
-                        </span>
-                      ))
-                    )}
-                  </td>
-                ) : null}
-              </tr>
+                  ) : null}
+                </Popup>
+              </CircleMarker>
             ))}
-          </tbody>
-        </table>
+        </MapContainer>
+      </section>
+
+      {isAdmin ? (
+        <section className="panel">
+          <h2>{editingId ? "Update Asset" : "Add Asset"}</h2>
+          <form className="grid" onSubmit={submitForm}>
+            <input
+              required
+              value={form.name}
+              placeholder="Asset name"
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
+            <input
+              required
+              value={form.region}
+              placeholder="Region"
+              onChange={(e) => setForm({ ...form, region: e.target.value })}
+            />
+            <input
+              required
+              value={form.type}
+              placeholder="Type"
+              onChange={(e) => setForm({ ...form, type: e.target.value })}
+            />
+            <select
+              value={form.status}
+              onChange={(e) =>
+                setForm({ ...form, status: e.target.value as Asset["status"] })
+              }
+            >
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+              <option value="Planned">Planned</option>
+            </select>
+            <input
+              type="number"
+              placeholder="Latitude"
+              value={form.latitude ?? ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  latitude: e.target.value ? Number(e.target.value) : null,
+                })
+              }
+            />
+            <input
+              type="number"
+              placeholder="Longitude"
+              value={form.longitude ?? ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  longitude: e.target.value ? Number(e.target.value) : null,
+                })
+              }
+            />
+            <div className="actions">
+              <button type="submit">{editingId ? "Update" : "Create"}</button>
+              <button type="button" onClick={clearForm}>
+                Clear
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
+      <section className="panel">
+        <h2>Data Table</h2>
+        {loading ? <p>Loading...</p> : null}
+        {error ? <p className="error">{error}</p> : null}
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th
+                  className="sortable-head"
+                  onClick={() => toggleSort("name")}
+                >
+                  Name{sortLabel("name")}
+                </th>
+                <th
+                  className="sortable-head"
+                  onClick={() => toggleSort("region")}
+                >
+                  Region{sortLabel("region")}
+                </th>
+                <th
+                  className="sortable-head"
+                  onClick={() => toggleSort("type")}
+                >
+                  Type{sortLabel("type")}
+                </th>
+                <th
+                  className="sortable-head"
+                  onClick={() => toggleSort("status")}
+                >
+                  Status{sortLabel("status")}
+                </th>
+                <th
+                  className="sortable-head"
+                  onClick={() => toggleSort("latitude")}
+                >
+                  Latitude{sortLabel("latitude")}
+                </th>
+                <th
+                  className="sortable-head"
+                  onClick={() => toggleSort("longitude")}
+                >
+                  Longitude{sortLabel("longitude")}
+                </th>
+                <th
+                  className="sortable-head"
+                  onClick={() => toggleSort("createdAt")}
+                >
+                  Created At{sortLabel("createdAt")}
+                </th>
+                <th
+                  className="sortable-head"
+                  onClick={() => toggleSort("updatedAt")}
+                >
+                  Updated At{sortLabel("updatedAt")}
+                </th>
+                {isAdmin ? <th>Action</th> : null}
+                {isAdmin && qaRan ? <th>QA Errors</th> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleAssets.map((asset) => (
+                <tr key={asset.id}>
+                  <td>{asset.name}</td>
+                  <td>{asset.region}</td>
+                  <td>{asset.type}</td>
+                  <td>{asset.status}</td>
+                  <td>{asset.latitude ?? "N/A"}</td>
+                  <td>{asset.longitude ?? "N/A"}</td>
+                  <td>{new Date(asset.createdAt).toLocaleString()}</td>
+                  <td>{new Date(asset.updatedAt).toLocaleString()}</td>
+                  {isAdmin ? (
+                    <td>
+                      <div className="icon-actions">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          data-label="Edit"
+                          aria-label={`Edit ${asset.id}`}
+                          onClick={() => startEdit(asset)}
+                        >
+                          <EditIcon />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn icon-btn-delete"
+                          data-label="Delete"
+                          aria-label={`Delete ${asset.id}`}
+                          onClick={() => removeAsset(asset)}
+                        >
+                          <DeleteIcon />
+                        </button>
+                      </div>
+                    </td>
+                  ) : null}
+                  {isAdmin && qaRan ? (
+                    <td>
+                      {(qaByAssetId.get(asset.id) ?? []).length === 0 ? (
+                        <span className="qa-badge qa-none">None</span>
+                      ) : (
+                        (qaByAssetId.get(asset.id) ?? []).map((code) => (
+                          <span
+                            key={`${asset.id}-${code}`}
+                            className={qaClassName(code as QaIssue["code"])}
+                          >
+                            {code}
+                          </span>
+                        ))
+                      )}
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 
-      <section className="panel">
-        <h2>QA + Export</h2>
-        <div className="actions">
-          {!qaRan ? (
-            <button onClick={runQa}>Run QA Checks</button>
-          ) : (
-            <button onClick={hideQa}>Hide QA Checks</button>
-          )}
-          <button onClick={() => exportCsv(filters)}>Export CSV</button>
-          <button onClick={() => exportGeoJson(filters)}>Export GeoJSON</button>
-          <button type="button" onClick={resetView}>
-            Reset
-          </button>
-          <button type="button" onClick={resetDataToSeed}>
-            Reset Data
-          </button>
-        </div>
-        {qaRan ? (
-          <div className="qa-filter-row">
-            <label htmlFor="qa-filter">QA Error Filter</label>
-            <select
-              id="qa-filter"
-              value={qaFilter}
-              onChange={(e) => setQaFilter(e.target.value as QaFilter)}
-            >
-              <option value="ALL">All assets</option>
-              <option value="MISSING_COORDINATES">Missing coordinates</option>
-              <option value="DUPLICATE_POINT">Duplicate point</option>
-              <option value="MISSING_FIELDS">Missing fields</option>
-              <option value="NO_ERRORS">No errors only</option>
-            </select>
+      {isAdmin ? (
+        <section className="panel">
+          <h2>QA + Export</h2>
+          <div className="actions">
+            {!qaRan ? (
+              <button onClick={runQa}>Run QA Checks</button>
+            ) : (
+              <button onClick={hideQa}>Hide QA Checks</button>
+            )}
+            <button onClick={() => exportCsv(filters)}>Export CSV</button>
+            <button onClick={() => exportGeoJson(filters)}>
+              Export GeoJSON
+            </button>
+            <button type="button" onClick={resetView}>
+              Reset
+            </button>
+            {isAdmin ? (
+              <button type="button" onClick={resetDataToSeed}>
+                Reset Data
+              </button>
+            ) : null}
           </div>
-        ) : null}
-        {qaRan ? (
-          <ul className="qa-list">
-            {qaIssues.map((issue) => (
-              <li key={`${issue.assetId}-${issue.code}`}>
-                [{issue.code}] {issue.assetId}: {issue.message}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
+          {qaRan ? (
+            <ul className="qa-list">
+              {qaIssues.map((issue) => (
+                <li key={`${issue.assetId}-${issue.code}`}>
+                  [{issue.code}] {issue.assetId}: {issue.message}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
 
       <footer className="footer">
         &copy; 2026 Maggie Huang. All rights reserved.

@@ -1,6 +1,34 @@
 import type { Asset, AssetFilters, QaIssue } from "./types";
 
 const API_BASE = "http://localhost:4000/api";
+let authToken = "";
+
+export interface AuthSession {
+  token: string;
+  username: string;
+  displayName: string;
+  role: "admin" | "user";
+}
+
+export function setAuthToken(token: string): void {
+  authToken = token;
+}
+
+function authHeaders(): HeadersInit {
+  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+}
+
+export async function login(username: string, password: string): Promise<AuthSession> {
+  const response = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password })
+  });
+  if (!response.ok) {
+    throw new Error("Invalid username or password");
+  }
+  return response.json() as Promise<AuthSession>;
+}
 
 function toQuery(filters: AssetFilters): string {
   const query = new URLSearchParams();
@@ -24,7 +52,7 @@ export async function getAssets(filters: AssetFilters): Promise<Asset[]> {
 export async function createAsset(payload: Omit<Asset, "id" | "createdAt" | "updatedAt">): Promise<Asset> {
   const response = await fetch(`${API_BASE}/assets`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload)
   });
   if (!response.ok) {
@@ -36,7 +64,7 @@ export async function createAsset(payload: Omit<Asset, "id" | "createdAt" | "upd
 export async function updateAsset(id: string, payload: Partial<Asset>): Promise<Asset> {
   const response = await fetch(`${API_BASE}/assets/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload)
   });
   if (!response.ok) {
@@ -47,7 +75,8 @@ export async function updateAsset(id: string, payload: Partial<Asset>): Promise<
 
 export async function deleteAsset(id: string): Promise<void> {
   const response = await fetch(`${API_BASE}/assets/${id}`, {
-    method: "DELETE"
+    method: "DELETE",
+    headers: authHeaders()
   });
   if (!response.ok) {
     throw new Error("Failed to delete asset");
@@ -56,7 +85,8 @@ export async function deleteAsset(id: string): Promise<void> {
 
 export async function resetAssetsData(): Promise<void> {
   const response = await fetch(`${API_BASE}/assets/reset`, {
-    method: "POST"
+    method: "POST",
+    headers: authHeaders()
   });
   if (!response.ok) {
     throw new Error("Failed to reset asset data");
