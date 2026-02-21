@@ -10,7 +10,6 @@ import {
   Select,
   TextField,
 } from "@mui/material";
-import FilterAltOffOutlinedIcon from "@mui/icons-material/FilterAltOffOutlined";
 import {
   createAsset,
   deleteAsset,
@@ -526,7 +525,7 @@ export default function App() {
       <section className="panel">
         <h2>Search / Filter</h2>
         <Box
-          className="grid"
+          className="grid filter-grid"
           sx={{ "& .MuiInputBase-root": { backgroundColor: "#fff" } }}
         >
           <TextField
@@ -631,12 +630,12 @@ export default function App() {
           <button
             type="button"
             className="filter-clear-btn"
-            aria-label="Clear all filters"
-            title="Clear all filters"
+            aria-label="Clear"
+            title="Clear"
             onClick={() => setFilters({ ...defaultFilters })}
             disabled={!hasActiveFilters}
           >
-            <FilterAltOffOutlinedIcon fontSize="small" />
+            Clear
           </button>
         </Box>
       </section>
@@ -697,7 +696,7 @@ export default function App() {
       {isAdmin ? (
         <section className="panel">
           <h2>{editingId ? "Update Asset" : "Add Asset"}</h2>
-          <form className="grid" onSubmit={submitForm}>
+          <form className="grid add-asset-grid" onSubmit={submitForm}>
             <input
               required
               value={form.name}
