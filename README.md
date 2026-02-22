@@ -22,7 +22,7 @@ This is a personal project for building and testing a lightweight spatial asset 
 
 - Frontend: React + TypeScript + Leaflet (`react-leaflet`)
 - API: Node.js + Express + TypeScript
-- Data: In-memory dataset (can be replaced with Cosmos DB)
+- Data: MongoDB (`assets` collection) with seed reset support
 
 ## Run Locally
 
@@ -56,6 +56,15 @@ npm run start
   - frontend at `/`
   - API at `/api/*`
 
+## Environment Variables
+
+- `MONGODB_URI`: MongoDB connection string
+- `MONGODB_DB_NAME`: Database name
+- `JWT_SECRET`: JWT signing secret
+- `PORT`: Optional local/server port (Render sets this automatically)
+
+See `.env.example` for a template.
+
 ## API Endpoints
 
 - `GET /api/assets`
@@ -65,16 +74,11 @@ npm run start
 - `GET /api/assets/export/csv`
 - `GET /api/assets/export/geojson`
 
-## Cosmos DB Adaptation Notes (database)
+## Data Persistence Notes
 
-- Keep asset properties in a container with `id` as partition key or region-based partition key.
-- Store coordinates as numeric `latitude` and `longitude`.
-- For GeoJSON output, transform records in API:
-  - `coordinates: [longitude, latitude]`.
-- Add server-side validation before write:
-  - coordinate bounds
-  - required attributes
-  - duplicate point logic
+- Asset CRUD operations are persisted to MongoDB.
+- On server startup, if the `assets` collection is empty, seed records from `server/data.ts` are inserted.
+- `Reset Dataset` clears current records and reloads seed records from `server/data.ts`.
 
 ## Demo Checklist
 

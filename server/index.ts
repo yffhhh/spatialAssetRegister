@@ -1,9 +1,11 @@
+import "dotenv/config";
 import cors from "cors";
 import express from "express";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { issueToken, validateCredentials, verifyToken } from "./auth";
+import { getDb } from "./db";
 import { seedAssets } from "./data";
 import type { Asset, QaIssue } from "./types";
 
@@ -17,7 +19,20 @@ const indexHtmlPath = path.join(distDir, "index.html");
 app.use(cors());
 app.use(express.json());
 
-let assets: Asset[] = seedAssets.map((asset) => ({ ...asset }));
+type AssetDocument = Asset & { _id?: unknown };
+
+async function assetsCollection() {
+  const db = await getDb();
+  return db.collection<AssetDocument>("assets");
+}
+
+async function ensureSeedData(): Promise<void> {
+  const collection = await assetsCollection();
+  const count = await collection.countDocuments();
+  if (count === 0) {
+    await collection.insertMany(seedAssets.map((asset) => ({ ...asset })));
+  }
+}
 
 function authenticate(req: express.Request, res: express.Response, next: express.NextFunction): void {
   const authHeader = req.headers.authorization;
@@ -44,19 +59,36 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
   next();
 }
 
-function filterAssets(query: Record<string, string | undefined>): Asset[] {
+function buildMongoFilter(query: Record<string, string | undefined>) {
   const search = (query.search ?? "").toLowerCase();
   const regions = (query.region ?? "").toLowerCase().split(",").filter(Boolean);
   const types = (query.type ?? "").toLowerCase().split(",").filter(Boolean);
   const statuses = (query.status ?? "").toLowerCase().split(",").filter(Boolean);
 
-  return assets.filter((asset) => {
-    const nameMatch = !search || asset.name.toLowerCase().includes(search);
-    const regionMatch = regions.length === 0 || regions.includes(asset.region.toLowerCase());
-    const typeMatch = types.length === 0 || types.includes(asset.type.toLowerCase());
-    const statusMatch = statuses.length === 0 || statuses.includes(asset.status.toLowerCase());
-    return nameMatch && regionMatch && typeMatch && statusMatch;
-  });
+  const filters: Record<string, unknown>[] = [];
+  if (search) filters.push({ name: { $regex: search, $options: "i" } });
+  if (regions.length > 0) {
+    filters.push({ region: { $in: regions.map((x) => new RegExp(`^${x}$`, "i")) } });
+  }
+  if (types.length > 0) {
+    filters.push({ type: { $in: types.map((x) => new RegExp(`^${x}$`, "i")) } });
+  }
+  if (statuses.length > 0) {
+    filters.push({ status: { $in: statuses.map((x) => new RegExp(`^${x}$`, "i")) } });
+  }
+  return filters.length > 0 ? { $and: filters } : {};
+}
+
+function stripMongoId(doc: AssetDocument): Asset {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { _id, ...asset } = doc;
+  return asset;
+}
+
+async function filterAssets(query: Record<string, string | undefined>): Promise<Asset[]> {
+  const collection = await assetsCollection();
+  const docs = await collection.find(buildMongoFilter(query)).toArray();
+  return docs.map(stripMongoId);
 }
 
 function runQaChecks(records: Asset[]): QaIssue[] {
@@ -121,19 +153,20 @@ function toCsv(records: Asset[]): string {
   return [headers.join(","), ...rows].join("\n");
 }
 
-function generateUniqueAssetId(records: Asset[]): string {
-  const existingIds = new Set(records.map((asset) => asset.id));
+async function generateUniqueAssetId(): Promise<string> {
+  const collection = await assetsCollection();
   for (let attempts = 0; attempts < 10000; attempts += 1) {
     const candidate = `A-${Math.floor(1000 + Math.random() * 9000)}`;
-    if (!existingIds.has(candidate)) {
+    const exists = await collection.findOne({ id: candidate }, { projection: { _id: 1 } });
+    if (!exists) {
       return candidate;
     }
   }
   throw new Error("Failed to generate unique asset ID");
 }
 
-app.get("/api/assets", (req, res) => {
-  const records = filterAssets(req.query as Record<string, string>);
+app.get("/api/assets", async (req, res) => {
+  const records = await filterAssets(req.query as Record<string, string>);
   res.json(records);
 });
 
@@ -154,61 +187,68 @@ app.post("/api/auth/login", async (req, res) => {
   res.json({ token, username: account.username, displayName: account.displayName, role: account.role });
 });
 
-app.post("/api/assets", authenticate, requireAdmin, (req, res) => {
+app.post("/api/assets", authenticate, requireAdmin, async (req, res) => {
   const payload = req.body as Omit<Asset, "id" | "createdAt" | "updatedAt">;
-  const id = generateUniqueAssetId(assets);
+  const id = await generateUniqueAssetId();
   const now = new Date().toISOString();
   const record: Asset = { ...payload, id, createdAt: now, updatedAt: now };
-  assets.unshift(record);
+  const collection = await assetsCollection();
+  await collection.insertOne(record);
   res.status(201).json(record);
 });
 
-app.put("/api/assets/:id", authenticate, requireAdmin, (req, res) => {
+app.put("/api/assets/:id", authenticate, requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const index = assets.findIndex((asset) => asset.id === id);
-  if (index === -1) {
+  const collection = await assetsCollection();
+  const existing = await collection.findOne({ id });
+  if (!existing) {
     res.status(404).json({ message: "Asset not found" });
     return;
   }
-  assets[index] = {
-    ...assets[index],
+  const updated: Asset = {
+    ...stripMongoId(existing),
     ...req.body,
-    id: assets[index].id,
-    createdAt: assets[index].createdAt,
+    id: existing.id,
+    createdAt: existing.createdAt,
     updatedAt: new Date().toISOString()
   };
-  res.json(assets[index]);
+  await collection.updateOne({ id }, { $set: updated });
+  res.json(updated);
 });
 
-app.delete("/api/assets/:id", authenticate, requireAdmin, (req, res) => {
+app.delete("/api/assets/:id", authenticate, requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const index = assets.findIndex((asset) => asset.id === id);
-  if (index === -1) {
+  const collection = await assetsCollection();
+  const result = await collection.deleteOne({ id });
+  if (result.deletedCount === 0) {
     res.status(404).json({ message: "Asset not found" });
     return;
   }
-  assets.splice(index, 1);
   res.status(204).send();
 });
 
-app.post("/api/assets/reset", authenticate, requireAdmin, (_, res) => {
-  assets = seedAssets.map((asset) => ({ ...asset }));
+app.post("/api/assets/reset", authenticate, requireAdmin, async (_, res) => {
+  const collection = await assetsCollection();
+  await collection.deleteMany({});
+  await collection.insertMany(seedAssets.map((asset) => ({ ...asset })));
   res.status(200).json({ message: "Working asset dataset reset to seed copy." });
 });
 
-app.get("/api/assets/qa", (_, res) => {
-  res.json(runQaChecks(assets));
+app.get("/api/assets/qa", async (_, res) => {
+  const collection = await assetsCollection();
+  const records = (await collection.find({}).toArray()).map(stripMongoId);
+  res.json(runQaChecks(records));
 });
 
-app.get("/api/assets/export/csv", (req, res) => {
-  const csv = toCsv(filterAssets(req.query as Record<string, string>));
+app.get("/api/assets/export/csv", async (req, res) => {
+  const csv = toCsv(await filterAssets(req.query as Record<string, string>));
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", "attachment; filename=assets.csv");
   res.send(csv);
 });
 
-app.get("/api/assets/export/geojson", (req, res) => {
-  const records = filterAssets(req.query as Record<string, string>);
+app.get("/api/assets/export/geojson", async (req, res) => {
+  const records = await filterAssets(req.query as Record<string, string>);
   const geojson = {
     type: "FeatureCollection",
     features: records
@@ -235,14 +275,24 @@ app.get("/api/assets/export/geojson", (req, res) => {
   res.send(JSON.stringify(geojson, null, 2));
 });
 
-if (fs.existsSync(indexHtmlPath)) {
-  app.use(express.static(distDir));
-  app.get("*", (_req, res) => {
-    res.sendFile(indexHtmlPath);
+async function startServer() {
+  await ensureSeedData();
+
+  if (fs.existsSync(indexHtmlPath)) {
+    app.use(express.static(distDir));
+    app.get("*", (_req, res) => {
+      res.sendFile(indexHtmlPath);
+    });
+  }
+
+  app.listen(port, () => {
+    // eslint-disable-next-line no-console
+    console.log(`Spatial Asset Register running at http://localhost:${port}`);
   });
 }
 
-app.listen(port, () => {
+startServer().catch((error: unknown) => {
   // eslint-disable-next-line no-console
-  console.log(`Spatial Asset Register running at http://localhost:${port}`);
+  console.error("Failed to start server", error);
+  process.exit(1);
 });

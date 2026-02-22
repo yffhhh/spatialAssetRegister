@@ -5,6 +5,7 @@
 ### Purpose
 
 This application supports basic spatial asset maintenance, visualization, and data quality checks.
+Data is persisted in MongoDB.
 
 ### Log in / Open
 
@@ -57,6 +58,12 @@ This application supports basic spatial asset maintenance, visualization, and da
 1. Click `Reset Dataset` to restore records back to seed data.
 2. This action removes current edits and created records.
 3. `Clear Filters` does not change dataset records; it only resets filter selections.
+
+### Data Storage Behavior
+
+1. Record create/update/delete actions are saved to MongoDB.
+2. On first startup with an empty database, the app seeds records from `server/data.ts`.
+3. `Reset Dataset` reloads `server/data.ts` records into MongoDB.
 
 ### Troubleshooting
 
