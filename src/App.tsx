@@ -886,7 +886,7 @@ export default function App() {
             </button>
             {isAdmin ? (
               <button type="button" onClick={resetDataToSeed}>
-                Reset Data
+                Reset Dataset
               </button>
             ) : null}
           </div>
