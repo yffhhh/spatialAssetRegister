@@ -282,8 +282,11 @@ export default function App() {
   function handleLogout() {
     setSession(null);
     setAccountMenuOpen(false);
+    setAuthError("");
+    setError("");
     setAuthToken("");
     localStorage.removeItem("spatial-auth");
+    sessionStorage.removeItem("spatial-auth");
     setAssets([]);
     setQaIssues([]);
     setQaRan(false);
