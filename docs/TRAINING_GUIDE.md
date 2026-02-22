@@ -10,6 +10,9 @@ This application supports basic spatial asset maintenance, visualization, and da
 
 1. Start the app (`npm run dev`) or open deployed URL.
 2. Land on the dashboard with map, filters, and data table.
+3. Sign in:
+   - Admin can create, update, delete, and reset dataset.
+   - User is read-only.
 
 ### View Spatial Assets
 
@@ -22,13 +25,14 @@ This application supports basic spatial asset maintenance, visualization, and da
 1. Use `Search by name` for partial keyword match.
 2. Use `Region`, `Asset Type`, and `Status` dropdowns for exact filtering.
 3. Filters immediately refresh map and data table.
+4. Use `Clear` to reset all active filters.
 
 ### Maintain Records
 
 1. Use `Add Asset` form to create a new record.
 2. Required fields: `name`, `region`, `type`, `status`.
 3. Optional coordinates: `latitude`, `longitude`.
-4. Click `Create` to submit.
+4. Click `Create` to submit (admin only).
 5. To update, click `Edit` from map/table and then `Update`.
 
 ## Page 2 - QA and Data Delivery
@@ -48,7 +52,19 @@ This application supports basic spatial asset maintenance, visualization, and da
 2. Click `Export CSV` to download tabular dataset.
 3. Click `Export GeoJSON` to download GIS-ready point features.
 
-### Recommended Future Enhancements
+### Reset Dataset
+
+1. Click `Reset Dataset` to restore records back to seed data.
+2. This action removes current edits and created records.
+3. `Clear Filters` does not change dataset records; it only resets filter selections.
+
+### Troubleshooting
+
+1. If table actions fail with `401 Unauthorized`:
+   - Sign out and sign back in as `admin`.
+   - Retry the action.
+
+### Future Enhancements
 
 1. Add role-based access control.
 2. Add audit logs for every update.

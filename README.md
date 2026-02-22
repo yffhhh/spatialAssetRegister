@@ -2,6 +2,10 @@
 
 This is a personal project for building and testing a lightweight spatial asset register workflow.
 
+## Live Demo
+
+- App URL: `https://spatialassetregister.onrender.com/`
+
 ## Delivered Scope
 
 - Map display with basemap, asset point layer, and pop-up details
@@ -27,10 +31,30 @@ npm install
 npm run dev
 ```
 
-App:
+Development URLs:
 
 - Frontend: `http://localhost:5173`
 - API: `http://localhost:4000`
+
+Production-style local run (single service):
+
+```bash
+npm install
+npm run build
+npm run start
+```
+
+- App: `http://localhost:4000`
+- API: `http://localhost:4000/api/*`
+
+## Render Deployment (Single Web Service)
+
+- Build Command: `npm install && npm run build`
+- Start Command: `npm run start`
+- Root Directory: leave empty (repo root)
+- Service URL serves both:
+  - frontend at `/`
+  - API at `/api/*`
 
 ## API Endpoints
 
